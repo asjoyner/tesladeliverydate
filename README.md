@@ -6,7 +6,7 @@ As has [been noted in news articles](https://electrek.co/2021/07/05/i-just-bough
 
 This small utility will monitor for the delivery date of a Tesla by Reservation Number, and output the latest information to the screen.  It's not a particularly user friendly UI, but it serves my needs.
 
-To use it, first copy the example configuration file to your home directory (or any path you provide as --config), and edit it to match your account and car.  Then, just start the daemon by running `go run main.go`.
+To use it, first copy the example configuration file to your home directory (at ~/.tesladeliverydate or any path you provide as --config), and edit it to match your account and car.  Then, just start the daemon by running `go run main.go`.
 
 It prints output to the screen like this:
 
