@@ -24,6 +24,7 @@ var (
 	loginURL   = "https://www.tesla.com/user/login/?destination=/teslaaccount"
 	profileURL = "https://www.tesla.com/teslaaccount/profile?rn="
 	configPath = flag.String("config", path.Join(os.Getenv("HOME"), ".tesladeliverydate"), "Path to the JSON formated config file")
+	refresh    = flag.Duration("refresh", 60*time.Minute, "How often to check the delivery date")
 	userAgent  = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36`
 )
 
@@ -65,6 +66,7 @@ func unpackAttrs(attrs []html.Attribute) map[string]string {
 
 func login(client *http.Client, config *Config) error {
 
+	glog.Info("requesting login form")
 	formReq, err := http.NewRequest("GET", loginURL, nil)
 	formReq.Header.Set("User-Agent", userAgent)
 	formResp, err := client.Do(formReq)
@@ -116,6 +118,8 @@ func login(client *http.Client, config *Config) error {
 	}
 	formValues.Add("identity", config.Username)
 	formValues.Add("credential", config.Password)
+
+	glog.Infof("logging in as: %s", config.Username)
 	loginReq, err := http.NewRequest("POST", formResp.Request.URL.String(), strings.NewReader(formValues.Encode()))
 	if err != nil {
 		return fmt.Errorf("creating login request: %s", err)
@@ -141,9 +145,10 @@ func getDeliveryDate(client *http.Client, reservation string) (string, error) {
 	purl := profileURL + reservation
 	req, err := http.NewRequest("GET", purl, nil)
 	req.Header.Set("User-Agent", userAgent)
+	glog.Infof("requesting reservation details for: %s", reservation)
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("fetching login form page: %s", err)
+		return "", fmt.Errorf("fetching reservation profile page: %s", err)
 	}
 	defer resp.Body.Close()
 
@@ -169,7 +174,7 @@ func monitorDeliveryDate(config *Config) {
 		jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
 		if err != nil {
 			glog.Error("Could not initialize cookieJar: ", err)
-			os.Exit(3)
+			os.Exit(2)
 		}
 
 		client := &http.Client{Jar: jar}
@@ -180,32 +185,31 @@ func monitorDeliveryDate(config *Config) {
 			continue
 		}
 
-		for {
+		for ; true; <-time.Tick(*refresh) { // tick once, then every *refresh
 			d, err := getDeliveryDate(client, config.Reservation)
 			if err != nil {
 				glog.Error(err)
+				time.Sleep(1 * time.Minute)
 				break // try logging in again
 			}
 			if d != deliveryDate {
-				glog.Info("=== New Delivery Date! ===")
 				deliveryDate = d
+				t := time.Now().Format(time.RFC3339)
+				fmt.Printf("%s: New Delivery Date! %s\n", t, deliveryDate)
+				glog.Warning(deliveryDate)
+			} else {
 				glog.Info(deliveryDate)
 			}
-			time.Sleep(60 * time.Minute)
 		}
 	}
 }
 
 func main() {
-	if err := flag.Set("alsologtostderr", "true"); err != nil {
-		os.Exit(5)
-	}
-
 	flag.Parse()
 	config, err := readConfig(*configPath)
 	if err != nil {
 		glog.Error(err)
-		os.Exit(2)
+		os.Exit(1)
 	}
 
 	monitorDeliveryDate(config)

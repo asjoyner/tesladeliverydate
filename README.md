@@ -12,8 +12,7 @@ It prints output to the screen like this:
 
 ```
 $ go run main.go
-I0710 22:54:28.362919   26303 main.go:190] === New Delivery Date! ===
-I0710 22:54:28.363197   26303 main.go:192] Estimated Delivery: July 17 - July 23
+2021-07-11T00:48:46-04:00: New Delivery Date! Estimated Delivery: July 17 - July 23                                                                         
 ```
 
 It will check for updates on the delivery date once an hour.
