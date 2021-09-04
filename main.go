@@ -26,6 +26,8 @@ var (
 	configPath = flag.String("config", path.Join(os.Getenv("HOME"), ".tesladeliverydate"), "Path to the JSON formated config file")
 	refresh    = flag.Duration("refresh", 60*time.Minute, "How often to check the delivery date")
 	userAgent  = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36`
+	debugDir   = flag.String("debugDir", path.Join(os.TempDir(), "tesladeliverydate"), "Path to dump pages, on error")
+	debug      = flag.Bool("debug", false, "Dump HTML of pages on error")
 )
 
 // Config describes the JSON format of the config file
@@ -74,9 +76,11 @@ func login(client *http.Client, config *Config) error {
 		return fmt.Errorf("fetching login form page: %s", err)
 	}
 	defer formResp.Body.Close()
-	buf := &bytes.Buffer{}
-	buf.ReadFrom(formResp.Body)
-	doc, err := html.Parse(buf)
+	loginPage, err := ioutil.ReadAll(formResp.Body)
+	if err != nil {
+		return fmt.Errorf("reading login page: %s", err)
+	}
+	doc, err := html.Parse(bytes.NewReader(loginPage))
 	if err != nil {
 		return fmt.Errorf("parsing login page: %s", err)
 	}
@@ -119,7 +123,9 @@ func login(client *http.Client, config *Config) error {
 	formValues.Add("identity", config.Username)
 	formValues.Add("credential", config.Password)
 
+	time.Sleep(5 * time.Second)
 	glog.Infof("logging in as: %s", config.Username)
+	glog.Infof("sending these params: %+v", formValues)
 	loginReq, err := http.NewRequest("POST", formResp.Request.URL.String(), strings.NewReader(formValues.Encode()))
 	if err != nil {
 		return fmt.Errorf("creating login request: %s", err)
@@ -133,9 +139,25 @@ func login(client *http.Client, config *Config) error {
 	}
 	defer loginResp.Body.Close()
 
-	buf.Reset()
-	buf.ReadFrom(loginResp.Body)
-	if !strings.Contains(buf.String(), "Sign Out") {
+	loginRespPage, err := ioutil.ReadAll(loginResp.Body)
+	if err != nil {
+		return fmt.Errorf("reading login response page: %s", err)
+	}
+	if !strings.Contains(string(loginRespPage), "Sign Out") {
+		if *debug {
+			err := os.MkdirAll(*debugDir, 0700)
+			if err != nil {
+				glog.Error(err)
+			}
+			ioutil.WriteFile(path.Join(*debugDir, "login.html"), loginPage, 0600)
+			if err != nil {
+				glog.Error(err)
+			}
+			ioutil.WriteFile(path.Join(*debugDir, "login-response.html"), loginRespPage, 0600)
+			if err != nil {
+				glog.Error(err)
+			}
+		}
 		return errors.New("account page does not say Sign Out")
 	}
 	return nil
